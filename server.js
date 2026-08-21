@@ -8,9 +8,8 @@ const multer = require("multer");
 const app = express();
 
 
-// 支持本地和云服务器
+// Render / 本地通用端口
 const PORT = process.env.PORT || 3000;
-
 
 
 // ======================
@@ -40,58 +39,79 @@ app.use(express.static(__dirname));
 // ======================
 
 
-const imageFolder = path.join(
+const imageFolder =
+path.join(
     __dirname,
     "images"
 );
 
 
 
+// 创建图片目录
 if(!fs.existsSync(imageFolder)){
 
-    fs.mkdirSync(imageFolder);
+    fs.mkdirSync(
+        imageFolder,
+        {
+            recursive:true
+        }
+    );
 
 }
 
 
 
-const storage = multer.diskStorage({
 
-    destination:function(req,file,cb){
-
-        cb(
-            null,
-            imageFolder
-        );
-
-    },
+const storage =
+multer.diskStorage({
 
 
-    filename:function(req,file,cb){
-
-        let filename =
-        Date.now()
-        +
-        "-"
-        +
-        file.originalname;
+destination:function(req,file,cb){
 
 
-        cb(
-            null,
-            filename
-        );
+    cb(
+        null,
+        imageFolder
+    );
 
-    }
+
+},
+
+
+
+filename:function(req,file,cb){
+
+
+    let filename =
+    Date.now()
+    +
+    "-"
+    +
+    file.originalname.replace(/\s+/g,"-");
+
+
+
+    cb(
+        null,
+        filename
+    );
+
+
+}
+
 
 
 });
 
 
 
-const upload = multer({
 
-    storage:storage
+
+
+const upload =
+multer({
+
+storage:storage
 
 });
 
@@ -99,7 +119,11 @@ const upload = multer({
 
 
 
+
+// ======================
 // 上传图片接口
+// ======================
+
 
 app.post(
 "/upload-image",
@@ -109,13 +133,16 @@ upload.single("image"),
 
 if(!req.file){
 
+
 return res.status(400).json({
 
 message:"No image uploaded"
 
 });
 
+
 }
+
 
 
 
@@ -126,17 +153,11 @@ message:"Image upload successful",
 image:
 "images/"+req.file.filename
 
-});
-
 
 });
 
 
-
-
-
-
-
+});
 // ======================
 // 首页
 // ======================
@@ -188,6 +209,8 @@ bank:""
 
 
 
+
+
 app.get(
 "/payment-settings",
 (req,res)=>{
@@ -197,6 +220,8 @@ res.json(paymentSettings);
 
 
 });
+
+
 
 
 
@@ -227,12 +252,14 @@ bank:req.body.bank || ""
 
 
 
+
 console.log(
 "Payment settings updated:"
 );
 
 
 console.log(paymentSettings);
+
 
 
 
@@ -244,15 +271,25 @@ message:"Saved successfully"
 
 
 });
+
+
+
+
+
+
 // ======================
 // 商品系统
 // ======================
 
 
-const productFile = path.join(
-    __dirname,
-    "products.json"
+const productFile =
+path.join(
+__dirname,
+"products.json"
 );
+
+
+
 
 
 
@@ -261,6 +298,7 @@ const productFile = path.join(
 // 读取商品
 
 function loadProducts(){
+
 
 
 if(!fs.existsSync(productFile)){
@@ -276,14 +314,18 @@ productFile,
 
 
 
-let data = fs.readFileSync(
+
+let data =
+fs.readFileSync(
 productFile,
 "utf8"
 );
 
 
 
+
 try{
+
 
 return JSON.parse(data);
 
@@ -305,9 +347,12 @@ return [];
 
 
 
+
 // 保存商品
 
+
 function saveProducts(products){
+
 
 
 fs.writeFileSync(
@@ -335,6 +380,7 @@ null,
 
 // 获取全部商品
 
+
 app.get(
 "/products",
 (req,res)=>{
@@ -344,7 +390,9 @@ let products =
 loadProducts();
 
 
+
 res.json(products);
+
 
 
 });
@@ -357,7 +405,9 @@ res.json(products);
 
 
 
+
 // 添加商品
+
 
 app.post(
 "/products",
@@ -366,6 +416,7 @@ app.post(
 
 let products =
 loadProducts();
+
 
 
 
@@ -393,11 +444,13 @@ image:req.body.image || ""
 
 
 
+
 products.push(newProduct);
 
 
 
 saveProducts(products);
+
 
 
 
@@ -414,6 +467,8 @@ console.log(newProduct);
 
 
 
+
+
 res.json({
 
 message:"Product added successfully",
@@ -423,7 +478,10 @@ product:newProduct
 });
 
 
+
 });
+
+
 
 
 
@@ -435,6 +493,7 @@ product:newProduct
 
 // 删除商品
 
+
 app.delete(
 "/products/:id",
 (req,res)=>{
@@ -445,8 +504,11 @@ loadProducts();
 
 
 
+
 let id =
 Number(req.params.id);
+
+
 
 
 
@@ -460,6 +522,7 @@ return product.id !== id;
 
 
 });
+
 
 
 
@@ -481,6 +544,7 @@ id
 
 
 
+
 res.json({
 
 message:"Product deleted successfully"
@@ -488,18 +552,8 @@ message:"Product deleted successfully"
 });
 
 
+
 });
-
-
-
-
-
-
-
-
-
-
-
 // ======================
 // 页面接口
 // ======================
@@ -583,7 +637,8 @@ __dirname,
 
 
 
-// 支付页面
+
+// Checkout 支付页面
 
 app.get(
 "/checkout.html",
@@ -611,12 +666,42 @@ __dirname,
 
 
 // ======================
+// Render健康检查
+// ======================
+
+
+app.get(
+"/health",
+(req,res)=>{
+
+
+res.json({
+
+status:"ok",
+
+server:"SDSD Store"
+
+});
+
+
+});
+
+
+
+
+
+
+
+
+
+// ======================
 // 启动服务器
 // ======================
 
 
 app.listen(
 PORT,
+"0.0.0.0",
 ()=>{
 
 

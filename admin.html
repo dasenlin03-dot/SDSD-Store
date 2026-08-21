@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>SDSD商城后台管理</title>
+
+
+<style>
+
+body{
+
+font-family:"Microsoft YaHei",Arial;
+
+background:#f5f5f5;
+
+padding:40px;
+
+}
+
+
+h1{
+
+text-align:center;
+
+}
+
+
+.box{
+
+background:white;
+
+max-width:750px;
+
+margin:25px auto;
+
+padding:25px;
+
+border-radius:10px;
+
+border:1px solid #ddd;
+
+}
+
+
+
+input,textarea{
+
+width:95%;
+
+padding:12px;
+
+margin:8px 0;
+
+}
+
+
+
+button{
+
+padding:12px 25px;
+
+margin-top:10px;
+
+cursor:pointer;
+
+background:#222;
+
+color:white;
+
+border:none;
+
+border-radius:5px;
+
+}
+
+
+
+.product{
+
+border-bottom:1px solid #ddd;
+
+padding:15px;
+
+}
+
+
+
+.product img{
+
+width:120px;
+
+height:120px;
+
+object-fit:cover;
+
+}
+
+
+.delete{
+
+background:#c00;
+
+}
+
+
+.msg{
+
+color:green;
+
+font-weight:bold;
+
+}
+
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<h1>SDSD 商城后台管理系统</h1>
+
+
+
+<!-- 支付设置 -->
+
+<div class="box">
+
+
+<h2>💳 支付设置</h2>
+
+
+<label>PayPal 收款链接</label>
+
+<input id="paypal">
+
+
+
+<label>Cash App 收款链接</label>
+
+<input id="cashapp">
+
+
+
+<label>Stripe 支付链接</label>
+
+<input id="stripe">
+
+
+
+<label>银行信息</label>
+
+<textarea id="bank"></textarea>
+
+
+
+<button onclick="savePayment()">
+
+保存支付设置
+
+</button>
+
+
+<p id="paymentMsg" class="msg"></p>
+
+
+</div>
+
+
+
+
+
+
+<!-- 商品上传 -->
+
+
+<div class="box">
+
+
+<h2>📦 添加商品</h2>
+
+
+
+<label>商品名称</label>
+
+<input id="productName">
+
+
+
+<label>商品价格</label>
+
+<input id="productPrice">
+
+
+
+<label>商品描述</label>
+
+<textarea id="productDescription"></textarea>
+
+
+
+<label>选择商品图片</label>
+
+<input 
+type="file"
+id="imageFile"
+accept="image/*">
+
+
+
+<button onclick="uploadImage()">
+
+上传图片
+
+</button>
+
+
+<p id="imageMsg" class="msg"></p>
+
+
+
+<input id="imagePath" readonly>
+
+
+
+<button onclick="addProduct()">
+
+添加商品
+
+</button>
+
+
+<p id="productMsg" class="msg"></p>
+
+
+</div>
+<!-- 商品管理 -->
+
+<div class="box">
+
+
+<h2>🗑 商品管理</h2>
+
+
+<div id="productList">
+
+正在加载商品...
+
+</div>
+
+
+</div>
+
+
+
+
+
+
+
+<script>
+
+
+
+// ======================
+// 读取支付设置
+// ======================
+
+
+fetch("/payment-settings")
+
+.then(res=>res.json())
+
+.then(data=>{
+
+
+document.getElementById("paypal").value =
+data.paypal || "";
+
+
+document.getElementById("cashapp").value =
+data.cashapp || "";
+
+
+document.getElementById("stripe").value =
+data.stripe || "";
+
+
+document.getElementById("bank").value =
+data.bank || "";
+
+
+});
+
+
+
+
+
+
+
+// ======================
+// 保存支付设置
+// ======================
+
+
+function savePayment(){
+
+
+let data={
+
+
+paypal:
+document.getElementById("paypal").value,
+
+
+cashapp:
+document.getElementById("cashapp").value,
+
+
+stripe:
+document.getElementById("stripe").value,
+
+
+bank:
+document.getElementById("bank").value
+
+
+};
+
+
+
+fetch("/payment-settings",{
+
+
+method:"POST",
+
+
+headers:{
+
+
+"Content-Type":"application/json"
+
+
+},
+
+
+body:JSON.stringify(data)
+
+
+})
+
+
+.then(res=>res.json())
+
+
+.then(()=>{
+
+
+document.getElementById("paymentMsg").innerHTML =
+"支付设置保存成功 ✅";
+
+
+});
+
+
+}
+
+
+
+
+
+
+
+
+
+// ======================
+// 上传图片
+// ======================
+
+
+function uploadImage(){
+
+
+let file =
+document.getElementById("imageFile").files[0];
+
+
+
+if(!file){
+
+
+alert("请选择图片");
+
+
+return;
+
+
+}
+
+
+
+let formData =
+new FormData();
+
+
+formData.append(
+"image",
+file
+);
+
+
+
+fetch("/upload-image",{
+
+
+method:"POST",
+
+
+body:formData
+
+
+})
+
+
+.then(res=>res.json())
+
+
+.then(data=>{
+
+
+document.getElementById("imagePath").value =
+data.image;
+
+
+document.getElementById("imageMsg").innerHTML =
+"图片上传成功 ✅";
+
+
+});
+
+
+}
+
+
+
+
+
+
+
+
+
+// ======================
+// 添加商品
+// ======================
+
+
+function addProduct(){
+
+
+
+let product={
+
+
+name:
+document.getElementById("productName").value,
+
+
+price:
+document.getElementById("productPrice").value,
+
+
+description:
+document.getElementById("productDescription").value,
+
+
+image:
+document.getElementById("imagePath").value
+
+
+};
+
+
+
+
+if(!product.name){
+
+
+alert("请输入商品名称");
+
+
+return;
+
+
+}
+
+
+
+fetch("/products",{
+
+
+method:"POST",
+
+
+headers:{
+
+
+"Content-Type":"application/json"
+
+
+},
+
+
+body:JSON.stringify(product)
+
+
+})
+
+
+.then(res=>res.json())
+
+
+.then(()=>{
+
+
+document.getElementById("productMsg").innerHTML =
+"商品添加成功 ✅";
+
+
+
+loadProducts();
+
+
+
+});
+
+
+
+}
+
+
+
+
+
+
+
+
+
+// ======================
+// 加载商品列表
+// ======================
+
+
+function loadProducts(){
+
+
+
+fetch("/products")
+
+
+.then(res=>res.json())
+
+
+.then(products=>{
+
+
+let html="";
+
+
+
+if(products.length===0){
+
+
+html="暂无商品";
+
+
+}
+
+
+
+products.forEach(product=>{
+
+
+html += `
+
+
+<div class="product">
+
+
+<img src="/${product.image}">
+
+
+
+<h3>${product.name}</h3>
+
+
+
+<p>
+价格：$${product.price}
+</p>
+
+
+
+<p>
+${product.description}
+</p>
+
+
+
+<button 
+class="delete"
+onclick="deleteProduct(${product.id})">
+
+删除商品
+
+</button>
+
+
+</div>
+
+
+
+`;
+
+
+
+});
+
+
+
+document.getElementById(
+"productList"
+).innerHTML=html;
+
+
+
+});
+
+
+
+}
+
+
+
+
+
+
+
+
+// ======================
+// 删除商品
+// ======================
+
+
+function deleteProduct(id){
+
+
+
+if(!confirm("确定删除这个商品吗？")){
+
+
+return;
+
+
+}
+
+
+
+
+fetch("/products/"+id,{
+
+
+method:"DELETE"
+
+
+})
+
+
+.then(res=>res.json())
+
+
+.then(()=>{
+
+
+alert("商品删除成功");
+
+
+loadProducts();
+
+
+
+});
+
+
+}
+
+
+
+
+
+// 页面打开自动加载商品
+
+loadProducts();
+
+
+
+</script>
+
+
+
+</body>
+
+
+</html>

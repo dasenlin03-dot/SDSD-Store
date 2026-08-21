@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>Payment - SDSD Store</title>
+
+
+<style>
+
+body{
+
+font-family:Arial;
+
+padding:40px;
+
+}
+
+
+.box{
+
+border:1px solid #ddd;
+
+padding:25px;
+
+max-width:500px;
+
+}
+
+
+button{
+
+width:100%;
+
+padding:15px;
+
+margin:10px 0;
+
+font-size:16px;
+
+cursor:pointer;
+
+}
+
+
+
+.info{
+
+background:#f5f5f5;
+
+padding:15px;
+
+margin-top:10px;
+
+}
+
+
+</style>
+
+
+</head>
+
+
+
+<body>
+
+
+<h1>SDSD Store Payment</h1>
+
+
+
+<div class="box">
+
+
+<h2>Select Payment Method</h2>
+
+
+
+<button onclick="payPal()">
+
+PayPal
+
+</button>
+
+
+<div id="paypal-info" class="info"></div>
+
+
+
+
+
+<button onclick="cashApp()">
+
+Cash App
+
+</button>
+
+
+<div id="cashapp-info" class="info"></div>
+
+
+
+
+
+<button onclick="stripePay()">
+
+Credit Card
+
+</button>
+
+
+<div id="stripe-info" class="info"></div>
+
+
+
+
+
+<button onclick="bankPay()">
+
+Bank Wire Transfer
+
+</button>
+
+
+<div id="bank-info" class="info"></div>
+
+
+
+</div>
+
+
+
+
+
+<script>
+
+
+let payment={};
+
+
+
+
+// 读取后台支付设置
+
+
+fetch("/payment-settings")
+
+
+.then(res=>res.json())
+
+
+.then(data=>{
+
+
+payment=data;
+
+
+
+document.getElementById("paypal-info").innerText=data.paypal;
+
+
+document.getElementById("cashapp-info").innerText=data.cashapp;
+
+
+document.getElementById("stripe-info").innerText=data.stripe;
+
+
+document.getElementById("bank-info").innerText=data.bank;
+
+
+
+});
+
+
+
+
+
+function payPal(){
+
+
+if(payment.paypal){
+
+
+window.location.href=payment.paypal;
+
+
+}else{
+
+
+alert("PayPal payment link not set");
+
+
+}
+
+
+}
+
+
+
+
+
+function cashApp(){
+
+
+if(payment.cashapp){
+
+
+window.location.href=payment.cashapp;
+
+
+}else{
+
+
+alert("Cash App payment link not set");
+
+
+}
+
+
+}
+
+
+
+
+
+function stripePay(){
+
+
+if(payment.stripe){
+
+
+window.location.href=payment.stripe;
+
+
+}else{
+
+
+alert("Card payment link not set");
+
+
+}
+
+
+}
+
+
+
+
+
+function bankPay(){
+
+
+alert(payment.bank);
+
+
+}
+
+
+
+</script>
+
+
+
+</body>
+
+</html>

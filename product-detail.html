@@ -214,7 +214,7 @@ document.getElementById("product").innerHTML = `
 
 class="product-image"
 
-src="/${item.image}"
+src="${item.image.startsWith('http') ? item.image : '/' + item.image}"
 
 alt="${item.name}">
 

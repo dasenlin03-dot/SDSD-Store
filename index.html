@@ -293,7 +293,7 @@ html += `
 onclick="openProduct(${product.id})">
 
 
-<img src="/${product.image}">
+<img src="${product.image.startsWith('http') ? product.image : '/' + product.image}">
 
 
 

@@ -3,7 +3,8 @@ const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
-
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const app = express();
 
@@ -37,74 +38,37 @@ app.use(express.static(__dirname));
 // ======================
 // 图片上传
 // ======================
+cloudinary.config({
 
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
 
-const imageFolder =
-path.join(
-    __dirname,
-    "images"
-);
+    api_key: process.env.CLOUDINARY_API_KEY,
 
-
-
-// 创建图片目录
-if(!fs.existsSync(imageFolder)){
-
-    fs.mkdirSync(
-        imageFolder,
-        {
-            recursive:true
-        }
-    );
-
-}
-
-
-
-
-const storage =
-multer.diskStorage({
-
-
-destination:function(req,file,cb){
-
-
-    cb(
-        null,
-        imageFolder
-    );
-
-
-},
-
-
-
-filename:function(req,file,cb){
-
-
-    let filename =
-    Date.now()
-    +
-    "-"
-    +
-    file.originalname.replace(/\s+/g,"-");
-
-
-
-    cb(
-        null,
-        filename
-    );
-
-
-}
-
-
+    api_secret: process.env.CLOUDINARY_API_SECRET
 
 });
 
 
 
+const storage =
+new CloudinaryStorage({
+
+    cloudinary: cloudinary,
+
+    params: {
+
+        folder:"sdsd-store",
+
+        allowed_formats:[
+            "jpg",
+            "png",
+            "jpeg",
+            "webp"
+        ]
+
+    }
+
+});
 
 
 
@@ -114,6 +78,8 @@ multer({
 storage:storage
 
 });
+
+
 
 
 
@@ -151,7 +117,7 @@ res.json({
 message:"Image upload successful",
 
 image:
-"images/"+req.file.filename
+req.file.path
 
 
 });

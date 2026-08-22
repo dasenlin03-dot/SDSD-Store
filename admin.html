@@ -590,7 +590,7 @@ html += `
 <div class="product">
 
 
-<img src="${product.image}">
+<img src="${product.image.startsWith("http") ? product.image : "/" + product.image}">
 
 
 

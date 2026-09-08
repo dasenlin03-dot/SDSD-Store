@@ -85,23 +85,11 @@ destination:function(req,file,cb){
 
 
 filename:function(req,file,cb){
-
-
-    let filename =
-    Date.now()
-    +
-    "-"
-    +
-    file.originalname.replace(/\s+/g,"-");
-
-
-
-    cb(
-        null,
-        filename
-    );
-
-
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const allowed = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif"];
+    const safeExt = allowed.includes(ext) ? ext : ".jpg";
+    const filename = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${safeExt}`;
+    cb(null, filename);
 }
 
 
@@ -152,14 +140,15 @@ message:"No image uploaded"
 
 
 
+const imagePath = "images/" + req.file.filename;
+
 res.json({
-
-message:"Image upload successful",
-
-image:
-"images/"+req.file.filename
-
-
+    success: true,
+    message: "Image upload successful",
+    image: imagePath,
+    path: imagePath,
+    url: "/" + imagePath,
+    filename: req.file.filename
 });
 
 

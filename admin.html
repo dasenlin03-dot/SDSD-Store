@@ -425,31 +425,26 @@ file
 
 
 fetch("/upload-image",{
-
-
-method:"POST",
-
-
-body:formData
-
-
+    method:"POST",
+    body:formData
 })
-
-
-.then(res=>res.json())
-
-
+.then(async res => {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || "图片上传失败");
+    return data;
+})
 .then(data=>{
-
-
-document.getElementById("imagePath").value =
-data.image;
-
-
-document.getElementById("imageMsg").innerHTML =
-"图片上传成功 ✅";
-
-
+    // 兼容不同版本服务器返回格式，优先使用 image
+    const imagePath = data.image || data.path || data.url || (data.filename ? "images/" + data.filename : "");
+    if (!imagePath || imagePath === "undefined") {
+        throw new Error("服务器没有返回图片地址");
+    }
+    document.getElementById("imagePath").value = imagePath;
+    document.getElementById("imageMsg").innerHTML = "图片上传成功 ✅";
+})
+.catch(err=>{
+    document.getElementById("imagePath").value = "";
+    document.getElementById("imageMsg").innerHTML = "图片上传失败：" + err.message;
 });
 
 

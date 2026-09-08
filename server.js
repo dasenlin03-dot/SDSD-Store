@@ -237,16 +237,31 @@ async function getAdminAuth() {
 }
 
 async function saveAdminAuth(auth) {
+    const row = { id: 1, username: auth.username, salt: auth.salt, password_hash: auth.passwordHash };
+
     if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
         fs.writeFileSync(adminAuthFile, JSON.stringify(auth, null, 2));
         return;
     }
-    await supabaseRequest(`/rest/v1/${ADMIN_AUTH_TABLE}`, {
-        method: "POST",
-        headers: { "Prefer": "resolution=merge-duplicates" },
-        body: JSON.stringify({ id: 1, username: auth.username, salt: auth.salt, password_hash: auth.passwordHash })
+
+    // 使用 PATCH 按主键更新，避免 POST upsert 在部分 PostgREST 配置下失败。
+    await supabaseRequest(`/rest/v1/${ADMIN_AUTH_TABLE}?id=eq.1`, {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        body: JSON.stringify({ username: row.username, salt: row.salt, password_hash: row.password_hash })
     });
-    // 同时更新本地文件作为备用，不影响 Supabase 持久化。
+
+    // PATCH 即使匹配不到行也可能返回 204，因此再读取一次确认确实保存。
+    const verifyRows = await supabaseRequest(`/rest/v1/${ADMIN_AUTH_TABLE}?id=eq.1&select=id,username,salt,password_hash`, { method: "GET" });
+    if (!Array.isArray(verifyRows) || verifyRows.length === 0) {
+        await supabaseRequest(`/rest/v1/${ADMIN_AUTH_TABLE}`, {
+            method: "POST",
+            headers: { "Prefer": "return=minimal" },
+            body: JSON.stringify(row)
+        });
+    }
+
+    // 只有 Supabase 成功保存后才更新本地备用文件。
     fs.writeFileSync(adminAuthFile, JSON.stringify(auth, null, 2));
 }
 

@@ -161,8 +161,10 @@ const DEFAULT_ADMIN_USER = process.env.ADMIN_USER || "admin";
 const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "SDSD@2026";
 const SESSION_SECRET = process.env.SESSION_SECRET || "sdsd-store-change-this-secret";
 
+// 管理员账号密码也保存到 Supabase，避免 Render 重新部署后密码被重置。
+const ADMIN_AUTH_TABLE = "admin_auth";
+
 // 登录成功后使用一次性通行票进入后台页面。
-// 这样即使浏览器里还保留着登录 Cookie，重新直接打开 /admin.html 也必须重新登录。
 const adminPageTickets = new Map();
 
 function makeAdminPageTicket(username) {
@@ -183,7 +185,7 @@ function hashPassword(password, salt) {
     return crypto.pbkdf2Sync(password, salt, 120000, 64, "sha512").toString("hex");
 }
 
-function loadAdminAuth() {
+function localAdminAuth() {
     if (!fs.existsSync(adminAuthFile)) {
         const salt = crypto.randomBytes(16).toString("hex");
         const auth = { username: DEFAULT_ADMIN_USER, salt, passwordHash: hashPassword(DEFAULT_ADMIN_PASSWORD, salt) };
@@ -192,6 +194,41 @@ function loadAdminAuth() {
     }
     try { return JSON.parse(fs.readFileSync(adminAuthFile, "utf8")); }
     catch { return null; }
+}
+
+async function getAdminAuth() {
+    if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return localAdminAuth();
+    try {
+        const rows = await supabaseRequest(`${SUPABASE_URL}/rest/v1/${ADMIN_AUTH_TABLE}?id=eq.1&select=username,salt,password_hash`, { method: "GET" });
+        if (Array.isArray(rows) && rows.length) return { username: rows[0].username, salt: rows[0].salt, passwordHash: rows[0].password_hash };
+
+        const auth = localAdminAuth();
+        if (auth) {
+            await supabaseRequest(`${SUPABASE_URL}/rest/v1/${ADMIN_AUTH_TABLE}`, {
+                method: "POST",
+                headers: { "Prefer": "resolution=merge-duplicates" },
+                body: JSON.stringify({ id: 1, username: auth.username, salt: auth.salt, password_hash: auth.passwordHash })
+            });
+        }
+        return auth;
+    } catch (err) {
+        console.error("读取 Supabase 管理员账号失败，暂时使用本地账号文件：", err.message);
+        return localAdminAuth();
+    }
+}
+
+async function saveAdminAuth(auth) {
+    if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
+        fs.writeFileSync(adminAuthFile, JSON.stringify(auth, null, 2));
+        return;
+    }
+    await supabaseRequest(`${SUPABASE_URL}/rest/v1/${ADMIN_AUTH_TABLE}`, {
+        method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify({ id: 1, username: auth.username, salt: auth.salt, password_hash: auth.passwordHash })
+    });
+    // 同时更新本地文件作为备用，不影响 Supabase 持久化。
+    fs.writeFileSync(adminAuthFile, JSON.stringify(auth, null, 2));
 }
 
 function makeSession(username) {
@@ -210,8 +247,6 @@ function validSession(token) {
 }
 
 function getAdminSessionToken(req) {
-    // 直接从请求 Cookie 读取，确保在所有受保护接口中都能拿到登录状态
-    // （包括 /upload-image 这种在 Cookie 解析中间件之前注册的接口）。
     const header = req.headers.cookie || "";
     const match = header.match(/(?:^|;)\s*admin_session=([^;]+)/);
     return match ? decodeURIComponent(match[1]) : "";
@@ -224,7 +259,6 @@ function requireAdmin(req, res, next) {
     return res.status(401).json({ message: "Admin login required" });
 }
 
-// 读取 cookie（不依赖额外 npm 包）
 app.use((req, res, next) => {
     const header = req.headers.cookie || "";
     req.cookies = {};
@@ -244,37 +278,43 @@ app.get("/admin.html", (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
     const sessionToken = getAdminSessionToken(req);
     if (!validSession(sessionToken)) return res.redirect("/admin-login.html");
-
     let username = "";
     try { username = JSON.parse(Buffer.from(sessionToken.split(".")[0], "base64url").toString()).username || ""; }
     catch { return res.redirect("/admin-login.html"); }
-
-    // 只有登录接口刚刚签发的一次性 ticket 才能打开后台页面。
-    // 直接输入 /admin.html、刷新页面或旧链接都不能绕过登录。
     const ticket = String(req.query.ticket || "");
     if (!consumeAdminPageTicket(ticket, username)) return res.redirect("/admin-login.html");
-
     res.sendFile(path.join(__dirname, "admin.html"));
 });
 
-app.post("/admin-login", (req, res) => {
-    const auth = loadAdminAuth();
-    if (!auth || req.body.username !== auth.username || !crypto.timingSafeEqual(Buffer.from(hashPassword(String(req.body.password || ""), auth.salt)), Buffer.from(auth.passwordHash))) {
-        return res.status(401).json({ message: "账号或密码错误" });
+app.post("/admin-login", async (req, res) => {
+    try {
+        const auth = await getAdminAuth();
+        const supplied = hashPassword(String(req.body.password || ""), auth?.salt || "");
+        const passwordOk = auth && supplied.length === auth.passwordHash.length && crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(auth.passwordHash));
+        if (!passwordOk || req.body.username !== auth.username) return res.status(401).json({ message: "账号或密码错误" });
+        res.setHeader("Set-Cookie", `admin_session=${makeSession(auth.username)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800`);
+        res.json({ success: true, ticket: makeAdminPageTicket(auth.username) });
+    } catch (err) {
+        console.error("管理员登录失败：", err);
+        res.status(500).json({ message: "登录服务异常，请稍后再试" });
     }
-    res.setHeader("Set-Cookie", `admin_session=${makeSession(auth.username)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800`);
-    res.json({ success: true, ticket: makeAdminPageTicket(auth.username) });
 });
 
-app.post("/admin-change-password", requireAdmin, (req, res) => {
-    const auth = loadAdminAuth();
-    const oldPassword = String(req.body.oldPassword || "");
-    const newPassword = String(req.body.newPassword || "");
-    if (!auth || hashPassword(oldPassword, auth.salt) !== auth.passwordHash) return res.status(400).json({ message: "原密码错误" });
-    if (newPassword.length < 8) return res.status(400).json({ message: "新密码至少 8 位" });
-    const salt = crypto.randomBytes(16).toString("hex");
-    fs.writeFileSync(adminAuthFile, JSON.stringify({ username: auth.username, salt, passwordHash: hashPassword(newPassword, salt) }, null, 2));
-    res.json({ success: true, message: "密码修改成功，请重新登录" });
+app.post("/admin-change-password", requireAdmin, async (req, res) => {
+    try {
+        const auth = await getAdminAuth();
+        const oldPassword = String(req.body.oldPassword || "");
+        const newPassword = String(req.body.newPassword || "");
+        if (!auth || hashPassword(oldPassword, auth.salt) !== auth.passwordHash) return res.status(400).json({ message: "原密码错误" });
+        if (newPassword.length < 8) return res.status(400).json({ message: "新密码至少 8 位" });
+        const salt = crypto.randomBytes(16).toString("hex");
+        await saveAdminAuth({ username: auth.username, salt, passwordHash: hashPassword(newPassword, salt) });
+        res.setHeader("Set-Cookie", "admin_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0");
+        res.json({ success: true, message: "密码修改成功，请重新登录" });
+    } catch (err) {
+        console.error("修改管理员密码失败：", err);
+        res.status(500).json({ message: "密码保存失败，请稍后再试" });
+    }
 });
 
 app.post("/admin-logout", (req, res) => {

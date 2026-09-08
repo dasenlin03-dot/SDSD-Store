@@ -518,6 +518,39 @@ function addProduct(){
 
 
 
+// ======================
+// 加载商品列表
+// ======================
+function loadProducts(){
+    fetch("/products")
+        .then(async res => {
+            const data = await res.json().catch(() => []);
+            if (!res.ok) throw new Error(data.message || "商品加载失败");
+            return data;
+        })
+        .then(products => {
+            let html = "";
+            if (!products || products.length === 0) {
+                html = "暂无商品";
+            } else {
+                products.forEach(product => {
+                    html += `
+<div class="product">
+<img src="${getImageUrl(product.image)}">
+<h3>${product.name}</h3>
+<p>价格：$${product.price}</p>
+<p>${product.description}</p>
+<button class="delete" onclick="deleteProduct(${product.id})">删除商品</button>
+</div>`;
+                });
+            }
+            document.getElementById("productList").innerHTML = html;
+        })
+        .catch(err => {
+            document.getElementById("productList").innerHTML = "商品加载失败：" + err.message;
+        });
+}
+
 function deleteProduct(id){
 
 

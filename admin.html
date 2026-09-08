@@ -115,6 +115,19 @@ font-weight:bold;
 }
 
 
+
+.admin-settings {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 300px;
+  z-index: 1000;
+}
+.admin-settings h2 { margin-top: 0; }
+.admin-settings input { width: 100%; box-sizing: border-box; }
+@media (max-width: 700px) {
+  .admin-settings { position: static; width: auto; margin-bottom: 20px; }
+}
 </style>
 
 </head>
@@ -239,11 +252,11 @@ accept="image/*">
 
 
 </div>
-<!-- 管理员设置 -->
-<div class="box">
+<!-- 管理员设置（右上角） -->
+<div class="box admin-settings">
 <h2>🔐 管理员设置</h2>
-<label>原密码</label><input id="oldPassword" type="password">
-<label>新密码（至少 8 位）</label><input id="newPassword" type="password">
+<label>原密码</label><input id="oldPassword" type="password" autocomplete="current-password">
+<label>新密码（至少 8 位）</label><input id="newPassword" type="password" autocomplete="new-password">
 <button onclick="changePassword()">修改密码</button>
 <button onclick="logout()" style="margin-left:10px;background:#666">退出登录</button>
 <p id="authMsg" class="msg"></p>
@@ -273,6 +286,13 @@ accept="image/*">
 
 
 <script>
+function getImageUrl(image) {
+  if (!image) return "";
+  const value = String(image).trim();
+  if (/^https?:\/\//i.test(value) || value.startsWith("//") || value.startsWith("data:") || value.startsWith("blob:")) return value;
+  return value.startsWith("/") ? value : "/" + value;
+}
+
 
 
 
@@ -595,7 +615,7 @@ html += `
 <div class="product">
 
 
-<img src="/${product.image}">
+<img src="${getImageUrl(product.image)}">
 
 
 

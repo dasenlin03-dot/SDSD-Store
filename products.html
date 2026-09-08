@@ -144,6 +144,13 @@ Loading products...
 
 
 <script>
+function getImageUrl(image) {
+  if (!image) return "";
+  const value = String(image).trim();
+  if (/^https?:\/\//i.test(value) || value.startsWith("//") || value.startsWith("data:") || value.startsWith("blob:")) return value;
+  return value.startsWith("/") ? value : "/" + value;
+}
+
 
 
 
@@ -172,7 +179,7 @@ onclick="openProduct(${product.id})">
 
 
 
-<img src="/${product.image}">
+<img src="${getImageUrl(product.image)}">
 
 
 

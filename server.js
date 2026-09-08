@@ -2,9 +2,9 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
+
 
 const app = express();
 
@@ -30,7 +30,11 @@ app.use(express.urlencoded({
 
 
 // 静态文件
-app.use(express.static(__dirname));
+// 静态文件（后台 admin.html 单独做登录保护）
+app.use((req, res, next) => {
+    if (req.path === "/admin.html") return next();
+    return express.static(__dirname, { index: false })(req, res, next);
+});
 
 
 
@@ -38,37 +42,74 @@ app.use(express.static(__dirname));
 // ======================
 // 图片上传
 // ======================
-cloudinary.config({
 
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
 
-    api_key: process.env.CLOUDINARY_API_KEY,
+const imageFolder =
+path.join(
+    __dirname,
+    "images"
+);
 
-    api_secret: process.env.CLOUDINARY_API_SECRET
 
-});
+
+// 创建图片目录
+if(!fs.existsSync(imageFolder)){
+
+    fs.mkdirSync(
+        imageFolder,
+        {
+            recursive:true
+        }
+    );
+
+}
+
 
 
 
 const storage =
-new CloudinaryStorage({
+multer.diskStorage({
 
-    cloudinary: cloudinary,
 
-    params: {
+destination:function(req,file,cb){
 
-        folder:"sdsd-store",
 
-        allowed_formats:[
-            "jpg",
-            "png",
-            "jpeg",
-            "webp"
-        ]
+    cb(
+        null,
+        imageFolder
+    );
 
-    }
+
+},
+
+
+
+filename:function(req,file,cb){
+
+
+    let filename =
+    Date.now()
+    +
+    "-"
+    +
+    file.originalname.replace(/\s+/g,"-");
+
+
+
+    cb(
+        null,
+        filename
+    );
+
+
+}
+
+
 
 });
+
+
+
 
 
 
@@ -84,8 +125,6 @@ storage:storage
 
 
 
-
-
 // ======================
 // 上传图片接口
 // ======================
@@ -93,6 +132,7 @@ storage:storage
 
 app.post(
 "/upload-image",
+requireAdmin,
 upload.single("image"),
 (req,res)=>{
 
@@ -117,7 +157,7 @@ res.json({
 message:"Image upload successful",
 
 image:
-req.file.path
+"images/"+req.file.filename
 
 
 });
@@ -151,6 +191,94 @@ __dirname,
 
 
 
+
+// ======================
+// 后台管理员认证
+// ======================
+const adminAuthFile = path.join(__dirname, "admin-auth.json");
+const DEFAULT_ADMIN_USER = process.env.ADMIN_USER || "admin";
+const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "SDSD@2026";
+const SESSION_SECRET = process.env.SESSION_SECRET || "sdsd-store-change-this-secret";
+
+function hashPassword(password, salt) {
+    return crypto.pbkdf2Sync(password, salt, 120000, 64, "sha512").toString("hex");
+}
+
+function loadAdminAuth() {
+    if (!fs.existsSync(adminAuthFile)) {
+        const salt = crypto.randomBytes(16).toString("hex");
+        const auth = { username: DEFAULT_ADMIN_USER, salt, passwordHash: hashPassword(DEFAULT_ADMIN_PASSWORD, salt) };
+        fs.writeFileSync(adminAuthFile, JSON.stringify(auth, null, 2));
+        return auth;
+    }
+    try { return JSON.parse(fs.readFileSync(adminAuthFile, "utf8")); }
+    catch { return null; }
+}
+
+function makeSession(username) {
+    const payload = Buffer.from(JSON.stringify({ username, exp: Date.now() + 8 * 60 * 60 * 1000 })).toString("base64url");
+    const sig = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
+    return payload + "." + sig;
+}
+
+function validSession(token) {
+    if (!token || !token.includes(".")) return false;
+    const [payload, sig] = token.split(".");
+    const expected = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
+    if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
+    try { return JSON.parse(Buffer.from(payload, "base64url").toString()).exp > Date.now(); }
+    catch { return false; }
+}
+
+function requireAdmin(req, res, next) {
+    if (validSession(req.cookies?.admin_session) || validSession(req.headers["x-admin-token"])) return next();
+    return res.status(401).json({ message: "Admin login required" });
+}
+
+// 读取 cookie（不依赖额外 npm 包）
+app.use((req, res, next) => {
+    const header = req.headers.cookie || "";
+    req.cookies = {};
+    header.split(";").forEach(part => {
+        const idx = part.indexOf("=");
+        if (idx > -1) req.cookies[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+    });
+    next();
+});
+
+app.get("/admin-login.html", (req, res) => res.sendFile(path.join(__dirname, "admin-login.html")));
+
+app.get("/admin.html", (req, res) => {
+    if (!validSession(req.cookies?.admin_session)) return res.redirect("/admin-login.html");
+    res.sendFile(path.join(__dirname, "admin.html"));
+});
+
+app.post("/admin-login", (req, res) => {
+    const auth = loadAdminAuth();
+    if (!auth || req.body.username !== auth.username || !crypto.timingSafeEqual(Buffer.from(hashPassword(String(req.body.password || ""), auth.salt)), Buffer.from(auth.passwordHash))) {
+        return res.status(401).json({ message: "账号或密码错误" });
+    }
+    res.setHeader("Set-Cookie", `admin_session=${makeSession(auth.username)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800`);
+    res.json({ success: true });
+});
+
+app.post("/admin-change-password", requireAdmin, (req, res) => {
+    const auth = loadAdminAuth();
+    const oldPassword = String(req.body.oldPassword || "");
+    const newPassword = String(req.body.newPassword || "");
+    if (!auth || hashPassword(oldPassword, auth.salt) !== auth.passwordHash) return res.status(400).json({ message: "原密码错误" });
+    if (newPassword.length < 8) return res.status(400).json({ message: "新密码至少 8 位" });
+    const salt = crypto.randomBytes(16).toString("hex");
+    fs.writeFileSync(adminAuthFile, JSON.stringify({ username: auth.username, salt, passwordHash: hashPassword(newPassword, salt) }, null, 2));
+    res.json({ success: true, message: "密码修改成功，请重新登录" });
+});
+
+app.post("/admin-logout", (req, res) => {
+    res.setHeader("Set-Cookie", "admin_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0");
+    res.json({ success: true });
+});
+
+app.get("/admin-status", requireAdmin, (req, res) => res.json({ success: true }));
 
 // ======================
 // 支付设置
@@ -196,6 +324,7 @@ res.json(paymentSettings);
 
 app.post(
 "/payment-settings",
+requireAdmin,
 (req,res)=>{
 
 
@@ -377,6 +506,7 @@ res.json(products);
 
 app.post(
 "/products",
+requireAdmin,
 (req,res)=>{
 
 
@@ -462,6 +592,7 @@ product:newProduct
 
 app.delete(
 "/products/:id",
+requireAdmin,
 (req,res)=>{
 
 

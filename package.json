@@ -15,10 +15,8 @@
   "type": "commonjs",
 
   "dependencies": {
-  "cloudinary": "^1.41.0",
-  "cors": "^2.8.6",
-  "express": "^5.2.1",
-  "multer": "^2.2.0",
-  "multer-storage-cloudinary": "^4.0.0"
-}
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "multer": "^2.2.0"
+  }
 }

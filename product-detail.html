@@ -185,7 +185,7 @@ fetch("/products")
 
 let item = products.find(
 
-product => String(product.id) === String(productId)
+product => product.id == productId
 
 );
 
@@ -214,7 +214,7 @@ document.getElementById("product").innerHTML = `
 
 class="product-image"
 
-src="${item.image.startsWith('http') ? item.image : '/' + item.image}"
+src="/${item.image}"
 
 alt="${item.name}">
 

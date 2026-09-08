@@ -40,119 +40,91 @@ app.use((req, res, next) => {
 
 
 // ======================
-// 图片上传
+// Supabase 持久化配置
 // ======================
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
+const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "product-images";
 
+function requireSupabase(res) {
+    if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
+        res.status(500).json({ message: "Supabase environment variables are not configured" });
+        return false;
+    }
+    return true;
+}
 
-const imageFolder =
-path.join(
-    __dirname,
-    "images"
-);
-
-
-
-// 创建图片目录
-if(!fs.existsSync(imageFolder)){
-
-    fs.mkdirSync(
-        imageFolder,
-        {
-            recursive:true
+async function supabaseRequest(endpoint, options = {}) {
+    const response = await fetch(`${SUPABASE_URL}${endpoint}`, {
+        ...options,
+        headers: {
+            apikey: SUPABASE_SECRET_KEY,
+            Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+            ...(options.headers || {})
         }
-    );
+    });
 
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+    if (!response.ok) {
+        const detail = typeof data === "string" ? data : JSON.stringify(data);
+        const error = new Error(`Supabase request failed (${response.status}): ${detail}`);
+        error.status = response.status;
+        throw error;
+    }
+    return data;
 }
 
-
-
-
-const storage =
-multer.diskStorage({
-
-
-destination:function(req,file,cb){
-
-
-    cb(
-        null,
-        imageFolder
-    );
-
-
-},
-
-
-
-filename:function(req,file,cb){
-    const ext = path.extname(file.originalname || "").toLowerCase();
-    const allowed = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif"];
-    const safeExt = allowed.includes(ext) ? ext : ".jpg";
-    const filename = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${safeExt}`;
-    cb(null, filename);
+function publicImageUrl(storagePath) {
+    return `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/${storagePath}`;
 }
 
-
-
+// 图片上传到 Supabase Storage，而不是 Render 临时磁盘。
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }
 });
 
+app.post("/upload-image", requireAdmin, upload.single("image"), async (req, res) => {
+    if (!req.file) return res.status(400).json({ message: "No image uploaded" });
+    if (!requireSupabase(res)) return;
 
+    try {
+        const ext = path.extname(req.file.originalname || "").toLowerCase();
+        const allowed = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif"];
+        const safeExt = allowed.includes(ext) ? ext : ".jpg";
+        const filename = `products/${Date.now()}-${crypto.randomBytes(8).toString("hex")}${safeExt}`;
+        const contentType = req.file.mimetype || "application/octet-stream";
 
+        await supabaseRequest(
+            `/storage/v1/object/${encodeURIComponent(SUPABASE_BUCKET)}/${filename.split("/").map(encodeURIComponent).join("/")}`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": contentType,
+                    "x-upsert": "false"
+                },
+                body: req.file.buffer
+            }
+        );
 
-
-
-const upload =
-multer({
-
-storage:storage
-
+        const url = publicImageUrl(filename);
+        res.json({
+            success: true,
+            message: "Image upload successful",
+            image: url,
+            path: url,
+            url,
+            filename
+        });
+    } catch (error) {
+        console.error("Supabase image upload error:", error);
+        res.status(500).json({ message: "Image upload failed", detail: error.message });
+    }
 });
 
-
-
-
-
-
-// ======================
-// 上传图片接口
-// ======================
-
-
-app.post(
-"/upload-image",
-requireAdmin,
-upload.single("image"),
-(req,res)=>{
-
-
-if(!req.file){
-
-
-return res.status(400).json({
-
-message:"No image uploaded"
-
-});
-
-
-}
-
-
-
-
-const imagePath = "images/" + req.file.filename;
-
-res.json({
-    success: true,
-    message: "Image upload successful",
-    image: imagePath,
-    path: imagePath,
-    url: "/" + imagePath,
-    filename: req.file.filename
-});
-
-
-});
 // ======================
 // 首页
 // ======================
@@ -284,376 +256,115 @@ app.post("/admin-logout", (req, res) => {
 app.get("/admin-status", requireAdmin, (req, res) => res.json({ success: true }));
 
 // ======================
-// 支付设置
+// 支付设置（Supabase）
 // ======================
 
-
-let paymentSettings={
-
-
-paypal:"",
-
-cashapp:"",
-
-stripe:"",
-
-bank:""
-
-
-};
-
-
-
-
-
-
-
-app.get(
-"/payment-settings",
-(req,res)=>{
-
-
-res.json(paymentSettings);
-
-
+app.get("/payment-settings", async (req, res) => {
+    if (!requireSupabase(res)) return;
+    try {
+        const rows = await supabaseRequest("/rest/v1/payment_settings?id=eq.1&select=*");
+        const row = Array.isArray(rows) && rows[0] ? rows[0] : {};
+        res.json({
+            paypal: row.paypal || "",
+            cashapp: row.cashapp || "",
+            stripe: row.stripe || "",
+            bank: row.bank || ""
+        });
+    } catch (error) {
+        console.error("Supabase payment settings read error:", error);
+        res.status(500).json({ message: "Failed to load payment settings" });
+    }
 });
 
+app.post("/payment-settings", requireAdmin, async (req, res) => {
+    if (!requireSupabase(res)) return;
+    const settings = {
+        id: 1,
+        paypal: req.body.paypal || "",
+        cashapp: req.body.cashapp || "",
+        stripe: req.body.stripe || "",
+        bank: req.body.bank || ""
+    };
 
-
-
-
-
-
-
-app.post(
-"/payment-settings",
-requireAdmin,
-(req,res)=>{
-
-
-paymentSettings={
-
-
-paypal:req.body.paypal || "",
-
-
-cashapp:req.body.cashapp || "",
-
-
-stripe:req.body.stripe || "",
-
-
-bank:req.body.bank || ""
-
-
-};
-
-
-
-
-console.log(
-"Payment settings updated:"
-);
-
-
-console.log(paymentSettings);
-
-
-
-
-res.json({
-
-message:"Saved successfully"
-
+    try {
+        await supabaseRequest("/rest/v1/payment_settings", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Prefer: "resolution=merge-duplicates,return=minimal"
+            },
+            body: JSON.stringify(settings)
+        });
+        console.log("Payment settings updated");
+        res.json({ message: "Saved successfully" });
+    } catch (error) {
+        console.error("Supabase payment settings write error:", error);
+        res.status(500).json({ message: "Failed to save payment settings" });
+    }
 });
-
-
-});
-
-
-
-
-
 
 // ======================
-// 商品系统
+// 商品系统（Supabase）
 // ======================
 
-
-const productFile =
-path.join(
-__dirname,
-"products.json"
-);
-
-
-
-
-
-
-
-
-// 读取商品
-
-function loadProducts(){
-
-
-
-if(!fs.existsSync(productFile)){
-
-
-fs.writeFileSync(
-productFile,
-"[]"
-);
-
-
-}
-
-
-
-
-let data =
-fs.readFileSync(
-productFile,
-"utf8"
-);
-
-
-
-
-try{
-
-
-return JSON.parse(data);
-
-
-}catch(error){
-
-
-return [];
-
-
-}
-
-
-}
-
-
-
-
-
-
-
-
-// 保存商品
-
-
-function saveProducts(products){
-
-
-
-fs.writeFileSync(
-
-productFile,
-
-JSON.stringify(
-products,
-null,
-2
-)
-
-);
-
-
-}
-
-
-
-
-
-
-
-
-
-// 获取全部商品
-
-
-app.get(
-"/products",
-(req,res)=>{
-
-
-let products =
-loadProducts();
-
-
-
-res.json(products);
-
-
-
+app.get("/products", async (req, res) => {
+    if (!requireSupabase(res)) return;
+    try {
+        const products = await supabaseRequest("/rest/v1/products?select=*&order=id.asc");
+        res.json(Array.isArray(products) ? products : []);
+    } catch (error) {
+        console.error("Supabase products read error:", error);
+        res.status(500).json({ message: "Failed to load products" });
+    }
 });
 
+app.post("/products", requireAdmin, async (req, res) => {
+    if (!requireSupabase(res)) return;
 
+    const newProduct = {
+        id: Date.now(),
+        name: req.body.name || "",
+        price: req.body.price || "",
+        description: req.body.description || "",
+        image: req.body.image || ""
+    };
 
-
-
-
-
-
-
-
-// 添加商品
-
-
-app.post(
-"/products",
-requireAdmin,
-(req,res)=>{
-
-
-let products =
-loadProducts();
-
-
-
-
-let newProduct={
-
-
-id:Date.now(),
-
-
-name:req.body.name || "",
-
-
-price:req.body.price || "",
-
-
-description:req.body.description || "",
-
-
-image:req.body.image || ""
-
-
-};
-
-
-
-
-
-
-products.push(newProduct);
-
-
-
-saveProducts(products);
-
-
-
-
-
-
-console.log(
-"New product:"
-);
-
-
-console.log(newProduct);
-
-
-
-
-
-
-
-res.json({
-
-message:"Product added successfully",
-
-product:newProduct
-
+    try {
+        const rows = await supabaseRequest("/rest/v1/products", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Prefer: "return=representation"
+            },
+            body: JSON.stringify(newProduct)
+        });
+        const product = Array.isArray(rows) && rows[0] ? rows[0] : newProduct;
+        console.log("New product:", product);
+        res.json({ message: "Product added successfully", product });
+    } catch (error) {
+        console.error("Supabase product insert error:", error);
+        res.status(500).json({ message: "Failed to add product" });
+    }
 });
 
+app.delete("/products/:id", requireAdmin, async (req, res) => {
+    if (!requireSupabase(res)) return;
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid product id" });
 
-
+    try {
+        await supabaseRequest(`/rest/v1/products?id=eq.${encodeURIComponent(id)}`, {
+            method: "DELETE",
+            headers: { Prefer: "return=minimal" }
+        });
+        console.log("Delete product:", id);
+        res.json({ message: "Product deleted successfully" });
+    } catch (error) {
+        console.error("Supabase product delete error:", error);
+        res.status(500).json({ message: "Failed to delete product" });
+    }
 });
 
-
-
-
-
-
-
-
-
-
-
-// 删除商品
-
-
-app.delete(
-"/products/:id",
-requireAdmin,
-(req,res)=>{
-
-
-let products =
-loadProducts();
-
-
-
-
-let id =
-Number(req.params.id);
-
-
-
-
-
-
-
-let newProducts =
-products.filter(product=>{
-
-
-return product.id !== id;
-
-
-});
-
-
-
-
-
-
-saveProducts(newProducts);
-
-
-
-
-
-
-console.log(
-"Delete product:",
-id
-);
-
-
-
-
-
-
-res.json({
-
-message:"Product deleted successfully"
-
-});
-
-
-
-});
 // ======================
 // 页面接口
 // ======================
@@ -779,7 +490,9 @@ res.json({
 
 status:"ok",
 
-server:"SDSD Store"
+server:"SDSD Store",
+
+persistence: SUPABASE_URL && SUPABASE_SECRET_KEY ? "supabase" : "not-configured"
 
 });
 

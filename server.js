@@ -199,12 +199,12 @@ function localAdminAuth() {
 async function getAdminAuth() {
     if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) return localAdminAuth();
     try {
-        const rows = await supabaseRequest(`${SUPABASE_URL}/rest/v1/${ADMIN_AUTH_TABLE}?id=eq.1&select=username,salt,password_hash`, { method: "GET" });
+        const rows = await supabaseRequest(`/rest/v1/${ADMIN_AUTH_TABLE}?id=eq.1&select=username,salt,password_hash`, { method: "GET" });
         if (Array.isArray(rows) && rows.length) return { username: rows[0].username, salt: rows[0].salt, passwordHash: rows[0].password_hash };
 
         const auth = localAdminAuth();
         if (auth) {
-            await supabaseRequest(`${SUPABASE_URL}/rest/v1/${ADMIN_AUTH_TABLE}`, {
+            await supabaseRequest(`/rest/v1/${ADMIN_AUTH_TABLE}`, {
                 method: "POST",
                 headers: { "Prefer": "resolution=merge-duplicates" },
                 body: JSON.stringify({ id: 1, username: auth.username, salt: auth.salt, password_hash: auth.passwordHash })
@@ -222,7 +222,7 @@ async function saveAdminAuth(auth) {
         fs.writeFileSync(adminAuthFile, JSON.stringify(auth, null, 2));
         return;
     }
-    await supabaseRequest(`${SUPABASE_URL}/rest/v1/${ADMIN_AUTH_TABLE}`, {
+    await supabaseRequest(`/rest/v1/${ADMIN_AUTH_TABLE}`, {
         method: "POST",
         headers: { "Prefer": "resolution=merge-duplicates" },
         body: JSON.stringify({ id: 1, username: auth.username, salt: auth.salt, password_hash: auth.passwordHash })

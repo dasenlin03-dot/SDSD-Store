@@ -67,14 +67,25 @@ async function supabaseRequest(endpoint, options = {}) {
     }
     const targetUrl = `${SUPABASE_URL}${endpoint}`;
     try {
-        const response = await fetch(targetUrl, {
-        ...options,
-        headers: {
+        const requestHeaders = {
             apikey: SUPABASE_SECRET_KEY,
             Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+            Accept: "application/json",
             ...(options.headers || {})
+        };
+
+        // PostgREST requires JSON for JSON request bodies. Node/fetch can otherwise
+        // send a string body as text/plain, which Supabase rejects with PGRST102.
+        if (options.body !== undefined && options.body !== null &&
+            typeof options.body === "string" &&
+            !Object.keys(requestHeaders).some(k => k.toLowerCase() === "content-type")) {
+            requestHeaders["Content-Type"] = "application/json";
         }
-    });
+
+        const response = await fetch(targetUrl, {
+            ...options,
+            headers: requestHeaders
+        });
 
         const text = await response.text();
         let data = null;

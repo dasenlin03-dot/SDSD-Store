@@ -714,7 +714,20 @@ loadProducts();
 function changePassword(){
 fetch("/admin-change-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({oldPassword:document.getElementById("oldPassword").value,newPassword:document.getElementById("newPassword").value})}).then(async r=>{let d=await r.json();if(!r.ok)throw new Error(d.message||"修改失败");document.getElementById("authMsg").textContent="密码修改成功，请重新登录";setTimeout(()=>location.href="/admin-login.html",800)}).catch(e=>document.getElementById("authMsg").textContent=e.message);
 }
-function logout(){fetch("/admin-logout",{method:"POST"}).finally(()=>location.href="/admin-login.html");}
+async function checkAdminSession(){
+  try{
+    const r=await fetch("/admin-status",{cache:"no-store",credentials:"same-origin"});
+    if(!r.ok) location.replace("/admin-login.html");
+  }catch(e){ location.replace("/admin-login.html"); }
+}
+
+function logout(){
+  fetch("/admin-logout",{method:"POST",credentials:"same-origin",cache:"no-store"})
+    .finally(()=>location.replace("/admin-login.html"));
+}
+
+// 防止浏览器前进/后退缓存（BFCache）绕过登录页面
+window.addEventListener("pageshow", checkAdminSession);
 
 // 页面打开自动加载商品
 

@@ -246,9 +246,13 @@ app.use((req, res, next) => {
     next();
 });
 
-app.get("/admin-login.html", (req, res) => res.sendFile(path.join(__dirname, "admin-login.html")));
+app.get("/admin-login.html", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.sendFile(path.join(__dirname, "admin-login.html"));
+});
 
 app.get("/admin.html", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
     if (!validSession(req.cookies?.admin_session)) return res.redirect("/admin-login.html");
     res.sendFile(path.join(__dirname, "admin.html"));
 });

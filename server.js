@@ -161,6 +161,24 @@ const DEFAULT_ADMIN_USER = process.env.ADMIN_USER || "admin";
 const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "SDSD@2026";
 const SESSION_SECRET = process.env.SESSION_SECRET || "sdsd-store-change-this-secret";
 
+// 登录成功后使用一次性通行票进入后台页面。
+// 这样即使浏览器里还保留着登录 Cookie，重新直接打开 /admin.html 也必须重新登录。
+const adminPageTickets = new Map();
+
+function makeAdminPageTicket(username) {
+    const ticket = crypto.randomBytes(32).toString("base64url");
+    adminPageTickets.set(ticket, { username, exp: Date.now() + 60 * 1000 });
+    return ticket;
+}
+
+function consumeAdminPageTicket(ticket, username) {
+    if (!ticket) return false;
+    const item = adminPageTickets.get(ticket);
+    if (!item) return false;
+    adminPageTickets.delete(ticket);
+    return item.username === username && item.exp > Date.now();
+}
+
 function hashPassword(password, salt) {
     return crypto.pbkdf2Sync(password, salt, 120000, 64, "sha512").toString("hex");
 }
@@ -224,7 +242,18 @@ app.get("/admin-login.html", (req, res) => {
 
 app.get("/admin.html", (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-    if (!validSession(req.cookies?.admin_session)) return res.redirect("/admin-login.html");
+    const sessionToken = getAdminSessionToken(req);
+    if (!validSession(sessionToken)) return res.redirect("/admin-login.html");
+
+    let username = "";
+    try { username = JSON.parse(Buffer.from(sessionToken.split(".")[0], "base64url").toString()).username || ""; }
+    catch { return res.redirect("/admin-login.html"); }
+
+    // 只有登录接口刚刚签发的一次性 ticket 才能打开后台页面。
+    // 直接输入 /admin.html、刷新页面或旧链接都不能绕过登录。
+    const ticket = String(req.query.ticket || "");
+    if (!consumeAdminPageTicket(ticket, username)) return res.redirect("/admin-login.html");
+
     res.sendFile(path.join(__dirname, "admin.html"));
 });
 
@@ -234,7 +263,7 @@ app.post("/admin-login", (req, res) => {
         return res.status(401).json({ message: "账号或密码错误" });
     }
     res.setHeader("Set-Cookie", `admin_session=${makeSession(auth.username)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800`);
-    res.json({ success: true });
+    res.json({ success: true, ticket: makeAdminPageTicket(auth.username) });
 });
 
 app.post("/admin-change-password", requireAdmin, (req, res) => {

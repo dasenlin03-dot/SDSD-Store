@@ -602,6 +602,13 @@ fetch("/admin-change-password",{method:"POST",headers:{"Content-Type":"applicati
 }
 async function checkAdminSession(){
   try{
+    const nav = performance.getEntriesByType("navigation")[0];
+    // 刷新或浏览器前进/后退都重新登录，避免使用缓存页面绕过登录。
+    if (nav && (nav.type === "reload" || nav.type === "back_forward")) {
+      await fetch("/admin-logout",{method:"POST",credentials:"same-origin",cache:"no-store"});
+      location.replace("/admin-login.html");
+      return;
+    }
     const r=await fetch("/admin-status",{cache:"no-store",credentials:"same-origin"});
     if(!r.ok) location.replace("/admin-login.html");
   }catch(e){ location.replace("/admin-login.html"); }

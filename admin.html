@@ -255,12 +255,33 @@ accept="image/*">
 <!-- 管理员设置（右上角） -->
 <div class="box admin-settings">
 <h2>🔐 管理员设置</h2>
-<label>原密码</label><input id="oldPassword" type="password" autocomplete="current-password">
-<label>新密码（至少 8 位）</label><input id="newPassword" type="password" autocomplete="new-password">
+<label>原密码</label>
+<div class="password-wrap"><input id="oldPassword" type="password" autocomplete="current-password"><button type="button" class="password-eye" aria-label="按住显示原密码">👁</button></div>
+<label>新密码（至少 8 位）</label>
+<div class="password-wrap"><input id="newPassword" type="password" autocomplete="new-password"><button type="button" class="password-eye" aria-label="按住显示新密码">👁</button></div>
 <button onclick="changePassword()">修改密码</button>
 <button onclick="logout()" style="margin-left:10px;background:#666">退出登录</button>
 <p id="authMsg" class="msg"></p>
 </div>
+
+<style>
+.password-wrap{position:relative;display:flex;align-items:center;margin:8px 0 16px}.password-wrap input{width:100%;box-sizing:border-box;margin:0;padding-right:48px}.password-eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:40px!important;height:40px;padding:0!important;margin:0!important;background:transparent!important;color:#555!important;font-size:20px;line-height:40px}.password-eye:active{background:#eee!important}
+</style>
+<script>
+(function(){
+  document.querySelectorAll('.password-wrap').forEach(function(wrap){
+    const input=wrap.querySelector('input'), eye=wrap.querySelector('.password-eye');
+    let timer=null;
+    const show=()=>{clearTimeout(timer);input.type='text'};
+    const hide=()=>{clearTimeout(timer);input.type='password'};
+    eye.addEventListener('mousedown',function(e){e.preventDefault();show()});
+    eye.addEventListener('mouseup',hide); eye.addEventListener('mouseleave',hide);
+    eye.addEventListener('touchstart',function(e){e.preventDefault();show()},{passive:false});
+    eye.addEventListener('touchend',hide); eye.addEventListener('touchcancel',hide);
+    eye.addEventListener('contextmenu',function(e){e.preventDefault()});
+  });
+})();
+</script>
 
 <!-- 商品管理 -->
 

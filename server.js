@@ -4,6 +4,13 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const multer = require("multer");
+const dns = require("dns");
+
+// Render 免费环境偶尔优先解析 IPv6，导致 Node fetch 出现 "fetch failed"。
+// 优先使用 IPv4，避免 Supabase REST 请求在这种情况下失败。
+if (typeof dns.setDefaultResultOrder === "function") {
+    dns.setDefaultResultOrder("ipv4first");
+}
 
 
 const app = express();
@@ -42,8 +49,8 @@ app.use((req, res, next) => {
 // ======================
 // Supabase 持久化配置
 // ======================
-const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
-const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/$/, "");
+const SUPABASE_SECRET_KEY = (process.env.SUPABASE_SECRET_KEY || "").trim();
 const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "product-images";
 
 function requireSupabase(res) {
@@ -55,7 +62,12 @@ function requireSupabase(res) {
 }
 
 async function supabaseRequest(endpoint, options = {}) {
-    const response = await fetch(`${SUPABASE_URL}${endpoint}`, {
+    if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) {
+        throw new Error("Supabase environment variables are missing");
+    }
+    const targetUrl = `${SUPABASE_URL}${endpoint}`;
+    try {
+        const response = await fetch(targetUrl, {
         ...options,
         headers: {
             apikey: SUPABASE_SECRET_KEY,
@@ -64,17 +76,24 @@ async function supabaseRequest(endpoint, options = {}) {
         }
     });
 
-    const text = await response.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+        const text = await response.text();
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch { data = text; }
 
-    if (!response.ok) {
+        if (!response.ok) {
         const detail = typeof data === "string" ? data : JSON.stringify(data);
         const error = new Error(`Supabase request failed (${response.status}): ${detail}`);
         error.status = response.status;
-        throw error;
+            throw error;
+        }
+        return data;
+    } catch (error) {
+        if (error && error.message === "Supabase environment variables are missing") throw error;
+        const cause = error && error.cause ? `; cause=${error.cause.code || error.cause.message || error.cause}` : "";
+        const wrapped = new Error(`Supabase connection failed: ${error && error.message ? error.message : "unknown error"}${cause}`);
+        wrapped.cause = error;
+        throw wrapped;
     }
-    return data;
 }
 
 function publicImageUrl(storagePath) {

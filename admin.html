@@ -550,11 +550,16 @@ body:JSON.stringify(product)
 
 .then(()=>{
 
+alert("商品添加成功");
 
-document.getElementById("productMsg").innerHTML =
-"商品添加成功 ✅";
-
-
+// 点击 OK 后恢复添加商品页面
+document.getElementById("productName").value = "";
+document.getElementById("productPrice").value = "";
+document.getElementById("productDescription").value = "";
+document.getElementById("imageFile").value = "";
+document.getElementById("imagePath").value = "";
+document.getElementById("imageMsg").innerHTML = "";
+document.getElementById("productMsg").innerHTML = "";
 
 loadProducts();
 

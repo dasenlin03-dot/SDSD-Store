@@ -219,8 +219,18 @@ function validSession(token) {
     catch { return false; }
 }
 
+function getAdminSessionToken(req) {
+    // 直接从请求 Cookie 读取，确保在所有受保护接口中都能拿到登录状态
+    // （包括 /upload-image 这种在 Cookie 解析中间件之前注册的接口）。
+    const header = req.headers.cookie || "";
+    const match = header.match(/(?:^|;)\s*admin_session=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : "";
+}
+
 function requireAdmin(req, res, next) {
-    if (validSession(req.cookies?.admin_session) || validSession(req.headers["x-admin-token"])) return next();
+    const cookieToken = getAdminSessionToken(req);
+    const sessionToken = cookieToken || req.cookies?.admin_session || req.headers["x-admin-token"];
+    if (validSession(sessionToken)) return next();
     return res.status(401).json({ message: "Admin login required" });
 }
 

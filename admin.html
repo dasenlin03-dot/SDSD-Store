@@ -484,205 +484,38 @@ fetch("/upload-image",{
 
 
 function addProduct(){
+    const product = {
+        name: document.getElementById("productName").value.trim(),
+        price: document.getElementById("productPrice").value.trim(),
+        description: document.getElementById("productDescription").value,
+        image: document.getElementById("imagePath").value.trim()
+    };
 
+    if (!product.name) {
+        alert("请输入商品名称");
+        return;
+    }
 
-
-let product={
-
-
-name:
-document.getElementById("productName").value,
-
-
-price:
-document.getElementById("productPrice").value,
-
-
-description:
-document.getElementById("productDescription").value,
-
-
-image:
-document.getElementById("imagePath").value
-
-
-};
-
-
-
-
-if(!product.name){
-
-
-alert("请输入商品名称");
-
-
-return;
-
-
+    fetch("/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(product)
+    })
+    .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "商品添加失败");
+        return data;
+    })
+    .then(() => {
+        alert("商品添加成功！");
+        // 点击 OK 后重新加载后台页面，恢复最初的空白添加商品状态。
+        window.location.reload();
+    })
+    .catch(err => {
+        alert("商品添加失败：" + err.message);
+    });
 }
 
-
-
-fetch("/products",{
-
-
-method:"POST",
-
-
-headers:{
-
-
-"Content-Type":"application/json"
-
-
-},
-
-
-body:JSON.stringify(product)
-
-
-})
-
-
-.then(res=>res.json())
-
-
-.then(()=>{
-
-alert("商品添加成功");
-
-// 点击 OK 后恢复添加商品页面
-document.getElementById("productName").value = "";
-document.getElementById("productPrice").value = "";
-document.getElementById("productDescription").value = "";
-document.getElementById("imageFile").value = "";
-document.getElementById("imagePath").value = "";
-document.getElementById("imageMsg").innerHTML = "";
-document.getElementById("productMsg").innerHTML = "";
-
-loadProducts();
-
-
-
-});
-
-
-
-}
-
-
-
-
-
-
-
-
-
-// ======================
-// 加载商品列表
-// ======================
-
-
-function loadProducts(){
-
-
-
-fetch("/products")
-
-
-.then(res=>res.json())
-
-
-.then(products=>{
-
-
-let html="";
-
-
-
-if(products.length===0){
-
-
-html="暂无商品";
-
-
-}
-
-
-
-products.forEach(product=>{
-
-
-html += `
-
-
-<div class="product">
-
-
-<img src="${getImageUrl(product.image)}">
-
-
-
-<h3>${product.name}</h3>
-
-
-
-<p>
-价格：$${product.price}
-</p>
-
-
-
-<p>
-${product.description}
-</p>
-
-
-
-<button 
-class="delete"
-onclick="deleteProduct(${product.id})">
-
-删除商品
-
-</button>
-
-
-</div>
-
-
-
-`;
-
-
-
-});
-
-
-
-document.getElementById(
-"productList"
-).innerHTML=html;
-
-
-
-});
-
-
-
-}
-
-
-
-
-
-
-
-
-// ======================
-// 删除商品
-// ======================
 
 
 function deleteProduct(id){
